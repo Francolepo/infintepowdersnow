@@ -1,0 +1,32 @@
+{
+	"schemaVersion": 1,
+	"id": "infinitepowdersnow",
+	"version": "${version}",
+	"name": "Infinite Powder Snow",
+	"description": "Adds a powder snow variant of the vanilla dripstone lava farm: a powder snow block above a full block above a pointed dripstone stalactite slowly fills the cauldron underneath with powder snow.",
+	"authors": [
+		"francolepo"
+	],
+	"contact": {
+		"sources": "https://github.com/francolepo/infintepowdersnow"
+	},
+	"license": "MIT",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.francolepo.infinitepowdersnow.InfinitePowderSnow"
+		]
+	},
+	"mixins": [
+		"infinitepowdersnow.mixins.json",
+		{
+			"config": "infinitepowdersnow.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~26.2",
+		"java": ">=25"
+	}
+}

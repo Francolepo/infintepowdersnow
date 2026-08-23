@@ -1,0 +1,11 @@
+{
+	"required": true,
+	"package": "com.francolepo.infinitepowdersnow.client.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"PointedDripstoneBlockClientMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}
