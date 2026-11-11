@@ -1,0 +1,507 @@
+<title>Three-Minute Piano</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Layout: one narrow column. A five-key keyboard picks the level, a slider caps the length, and the matching pieces list below, shortest first. */
+:root {
+  --bg: #f2f3ef;
+  --surface: #fbfbf8;
+  --fg: #16191c;
+  --muted: #5b6266;
+  --line: #d8dbd4;
+  --accent: #b1302a;
+  --accent-fg: #ffffff;
+  --key: #ffffff;
+  --key-fg: #16191c;
+  --pressed: #2b3036;
+  --pressed-fg: #f6f6f1;
+  --black: #0d0f10;
+  --ok: #2c7a4b;
+  --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101214;
+    --surface: #171a1d;
+    --fg: #e9ebe6;
+    --muted: #9aa1a5;
+    --line: #2a2f33;
+    --accent: #ec6a60;
+    --accent-fg: #170807;
+    --key: #dedfd7;
+    --key-fg: #16191c;
+    --pressed: #3d444b;
+    --pressed-fg: #f6f6f1;
+    --black: #050606;
+    --ok: #62c58a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101214;
+  --surface: #171a1d;
+  --fg: #e9ebe6;
+  --muted: #9aa1a5;
+  --line: #2a2f33;
+  --accent: #ec6a60;
+  --accent-fg: #170807;
+  --key: #dedfd7;
+  --key-fg: #16191c;
+  --pressed: #3d444b;
+  --pressed-fg: #f6f6f1;
+  --black: #050606;
+  --ok: #62c58a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 760px; margin: 0 auto; display: grid; gap: 28px; }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(32px, 7vw, 46px); line-height: 1.05; letter-spacing: -0.02em; font-weight: 700; }
+.lede { margin: 10px 0 0; color: var(--muted); max-width: 52ch; font-size: 16px; }
+.label {
+  display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+}
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* controls */
+.controls { display: grid; gap: 26px; }
+.keys { position: relative; display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
+.key {
+  appearance: none; border: 1px solid var(--line); border-top: 0;
+  background: var(--key); color: var(--key-fg);
+  height: 116px; padding: 0 2px 10px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px;
+  border-radius: 0 0 8px 8px; font-family: var(--font-body);
+  box-shadow: 0 4px 0 var(--line);
+  transition: transform 0.08s, box-shadow 0.08s, background 0.08s;
+}
+.key .num { font-family: var(--font-display); font-weight: 700; font-size: 26px; line-height: 1; }
+.key .nm { font-size: 11.5px; font-weight: 500; }
+.key[aria-pressed="true"] {
+  background: var(--pressed); color: var(--pressed-fg); border-color: var(--pressed);
+  box-shadow: 0 1px 0 var(--line), inset 0 4px 0 var(--accent);
+  transform: translateY(3px);
+}
+.black {
+  position: absolute; top: 0; width: 26px; height: 56px; transform: translateX(-50%);
+  background: var(--black); border: 1px solid var(--line); border-top: 0;
+  border-radius: 0 0 4px 4px; pointer-events: none; z-index: 2;
+}
+.guide { margin-top: 14px; font-size: 13px; color: var(--muted); }
+.guide summary { cursor: pointer; width: fit-content; text-decoration: underline; text-underline-offset: 3px; }
+.guide dl { margin: 10px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; }
+.guide dt { font-weight: 600; color: var(--fg); }
+.guide dd { margin: 0; min-width: 0; }
+
+.length { display: grid; gap: 4px; }
+.length-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.length-top .label { margin: 0; }
+.readout { font-family: var(--font-display); font-weight: 700; font-size: 26px; font-variant-numeric: tabular-nums; }
+input[type="range"] { width: 100%; accent-color: var(--accent); height: 32px; margin: 0; }
+.ticks { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.row-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  appearance: none; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+  padding: 6px 12px; border-radius: 999px; line-height: 1.3; text-decoration: none;
+  display: inline-flex; align-items: center; min-height: 34px;
+}
+.chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+a.chip:hover, button.chip:hover { border-color: var(--fg); }
+
+.search { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+input[type="search"], select {
+  font: inherit; font-size: 15px; color: var(--fg); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; min-width: 0; min-height: 42px;
+}
+input[type="search"]::placeholder { color: var(--muted); }
+
+/* results */
+.bar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; border-top: 2px solid var(--fg); padding-top: 14px; }
+.summary { margin: 0; font-size: 14px; color: var(--muted); min-width: 0; }
+.summary strong { color: var(--fg); font-weight: 600; }
+.views { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn {
+  appearance: none; font: inherit; font-weight: 600; font-size: 14px; cursor: pointer; border: 0;
+  background: var(--accent); color: var(--accent-fg); padding: 10px 18px; border-radius: 8px; min-height: 42px;
+}
+.btn:hover { filter: brightness(1.08); }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+ul.list { list-style: none; margin: 0; padding: 0; display: grid; }
+.song {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px;
+  padding: 18px 0; border-bottom: 1px solid var(--line); scroll-margin-top: 24px;
+}
+.song.pick { outline: 3px solid var(--accent); outline-offset: 6px; border-radius: 4px; }
+.info { min-width: 0; }
+.meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); font-weight: 500; margin-bottom: 4px; }
+.pips { display: inline-flex; gap: 2px; }
+.pips i { width: 5px; height: 14px; background: var(--line); border-radius: 0 0 2px 2px; display: block; }
+.pips i.on { background: var(--fg); }
+.song h3 { font-size: 20px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em; }
+.by { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+.note { margin: 6px 0 0; font-size: 14px; max-width: 58ch; }
+.time { font-family: var(--font-display); font-weight: 700; font-size: 28px; line-height: 1; font-variant-numeric: tabular-nums; text-align: right; padding-top: 18px; }
+.time small { display: block; font-family: var(--font-body); font-size: 11px; font-weight: 500; color: var(--muted); letter-spacing: 0.04em; margin-top: 4px; }
+.acts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.chip.on-saved[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.chip.on-learned[aria-pressed="true"] { background: var(--ok); color: var(--bg); border-color: var(--ok); }
+.empty { padding: 36px 0; color: var(--muted); max-width: 46ch; }
+.empty strong { color: var(--fg); display: block; font-family: var(--font-display); font-size: 20px; margin-bottom: 6px; }
+.foot { font-size: 13px; color: var(--muted); max-width: 62ch; }
+@media (prefers-reduced-motion: reduce) { .key { transition: none; } }
+@media (max-width: 420px) {
+  .key { height: 104px; }
+  .key .nm { font-size: 11px; }
+  .black { width: 22px; height: 50px; }
+}
+</style>
+
+<main class="wrap">
+  <header>
+    <h1>Three-Minute Piano</h1>
+    <p class="lede">Choose your level and a time limit. You only see pieces that fit both.</p>
+  </header>
+
+  <section class="controls" aria-label="Filters">
+    <div>
+      <span class="label" id="lvlLabel">Your level</span>
+      <div class="keys" id="keys" role="group" aria-labelledby="lvlLabel">
+        <span class="black" style="left:20%" aria-hidden="true"></span>
+        <span class="black" style="left:40%" aria-hidden="true"></span>
+        <span class="black" style="left:80%" aria-hidden="true"></span>
+      </div>
+      <details class="guide">
+        <summary>What the levels mean</summary>
+        <dl id="guide"></dl>
+        <p>Grades are a rough guide. Pick two neighbouring levels if you are between them.</p>
+      </details>
+    </div>
+
+    <div class="length">
+      <div class="length-top">
+        <label class="label" for="max">Longest piece</label>
+        <span class="readout" id="readout" aria-live="polite">3:00</span>
+      </div>
+      <input type="range" id="max" min="60" max="360" step="15" value="180">
+      <div class="ticks" aria-hidden="true"><span>1:00</span><span>2:00</span><span>3:00</span><span>4:00</span><span>5:00</span><span>Any</span></div>
+    </div>
+
+    <div>
+      <span class="label" id="genreLabel">Style (optional)</span>
+      <div class="row-controls" id="genres" role="group" aria-labelledby="genreLabel"></div>
+    </div>
+
+    <div class="search">
+      <input type="search" id="q" placeholder="Search songs" aria-label="Search by title or composer">
+      <select id="sort" aria-label="Sort pieces">
+        <option value="time">Shortest first</option>
+        <option value="timeDesc">Longest first</option>
+        <option value="level">Easiest first</option>
+        <option value="az">A to Z</option>
+      </select>
+    </div>
+  </section>
+
+  <section aria-label="Results">
+    <div class="bar">
+      <p class="summary" id="summary" aria-live="polite"></p>
+      <div class="tools">
+        <div class="views" id="views" role="group" aria-label="Show"></div>
+        <button class="btn" id="surprise" type="button">Pick one for me</button>
+      </div>
+    </div>
+    <ul class="list" id="list"></ul>
+  </section>
+
+  <p class="foot">Times are for a typical recording or easy arrangement and move with your tempo. Levels are a close guess, so expect a piece to feel a little easier or harder than listed. Sheet music and tutorial links open a search in a new tab; check that the edition matches your level before you start.</p>
+</main>
+
+<script>
+(function () {
+  var LEVELS = [
+    { n: 1, name: 'Starter', desc: 'Five-finger positions, melody mostly in one hand, simple rhythms. First months.' },
+    { n: 2, name: 'Early', desc: 'Both hands together, simple chords and steady patterns. About grades 1 to 2.' },
+    { n: 3, name: 'Middle', desc: 'Moving left hand, a few sharps or flats, some pedal. About grades 3 to 5.' },
+    { n: 4, name: 'Strong', desc: 'Faster passages, wider reaches, careful pedalling. About grades 6 to 7.' },
+    { n: 5, name: 'Advanced', desc: 'Concert-level runs, jumps and stamina. Grade 8 and up.' }
+  ];
+
+  // [title, composer or artist, level 1-5, seconds, style, short note]
+  var SONGS = [
+    ['Mary Had a Little Lamb', 'Traditional', 1, 30, 'Folk & traditional', 'Only a few notes. A good first melody.'],
+    ['Hot Cross Buns', 'Traditional', 1, 20, 'Folk & traditional', 'Three notes, one hand.'],
+    ['Twinkle, Twinkle, Little Star', 'Traditional', 1, 45, 'Folk & traditional', 'Easy to play and good for practising hand position.'],
+    ['Jingle Bells', 'James Lord Pierpont', 1, 45, 'Folk & traditional', 'Repeated notes and a simple jump.'],
+    ['Chopsticks', 'Traditional', 1, 45, 'Folk & traditional', 'Quick to learn, fun with a partner.'],
+    ['Heart and Soul', 'Hoagy Carmichael', 1, 60, 'Pop & standards', 'The classic duet. Learn either part.'],
+    ['When the Saints Go Marching In', 'Traditional', 1, 60, 'Folk & traditional', 'Short melody you will already know by ear.'],
+    ['Ode to Joy', 'Beethoven', 1, 60, 'Classical', 'Easy arrangement with a smooth, stepwise melody.'],
+    ['Brahms’ Lullaby', 'Brahms', 1, 75, 'Classical', 'Gentle waltz with an easy left hand.'],
+
+    ['The Happy Farmer', 'Schumann', 2, 55, 'Classical', 'Bouncy and short. Good for light, even playing.'],
+    ['Wild Horseman', 'Schumann', 2, 50, 'Classical', 'Energetic with a clear two-part shape.'],
+    ['La Candeur, Op. 100 No. 1', 'Burgmüller', 2, 60, 'Classical', 'Flowing right hand over simple chords.'],
+    ['Zelda’s Lullaby', 'Koji Kondo', 2, 60, 'Film & games', 'Slow waltz time, easy to memorise.'],
+    ['Tetris Theme (Korobeiniki)', 'Traditional', 2, 60, 'Film & games', 'Familiar tune. The left hand keeps a steady pattern.'],
+    ['Super Mario Bros. Theme', 'Koji Kondo', 2, 75, 'Film & games', 'Syncopated rhythm. Count slowly at first.'],
+    ['Minuet in G', 'Petzold (often credited to Bach)', 2, 100, 'Classical', 'A standard first Baroque piece.'],
+    ['Amazing Grace', 'Traditional', 2, 120, 'Folk & traditional', 'Slow, singable and easy to shape.'],
+    ['Greensleeves', 'Traditional', 2, 120, 'Folk & traditional', 'Minor key with a lilting rhythm.'],
+    ['Moon River', 'Henry Mancini', 2, 160, 'Film & games', 'Wide, gentle melody in waltz time.'],
+    ['Over the Rainbow', 'Harold Arlen', 2, 165, 'Film & games', 'Big opening leap, then easy to follow.'],
+    ['Stand By Me', 'Ben E. King', 2, 177, 'Pop & standards', 'Repeating bass line, simple chords.'],
+    ['Can’t Help Falling in Love', 'Elvis Presley', 2, 180, 'Pop & standards', 'Slow and steady, good for practising chords.'],
+    ['Imagine', 'John Lennon', 2, 184, 'Pop & standards', 'Broken chords throughout.'],
+    ['Mad World', 'Gary Jules', 2, 190, 'Pop & standards', 'Moody and repetitive, easy to pick up.'],
+    ['Let It Be', 'The Beatles', 2, 240, 'Pop & standards', 'Well-known chord progression.'],
+
+    ['Prelude in A major, Op. 28 No. 7', 'Chopin', 3, 45, 'Classical', 'Tiny but expressive. Very short.'],
+    ['Arabesque, Op. 100 No. 2', 'Burgmüller', 3, 65, 'Classical', 'Light, quick right-hand figures.'],
+    ['Prelude in C minor, Op. 28 No. 20', 'Chopin', 3, 85, 'Classical', 'Slow, heavy chords. Short and dramatic.'],
+    ['Cornfield Chase', 'Hans Zimmer', 3, 126, 'Film & games', 'Repeating pattern that builds slowly.'],
+    ['Prelude in C major, BWV 846', 'Bach', 3, 135, 'Classical', 'Broken chords from start to finish.'],
+    ['Prelude in E minor, Op. 28 No. 4', 'Chopin', 3, 140, 'Classical', 'Slow and moving. Mostly a steady chord pulse.'],
+    ['Comptine d’un autre été', 'Yann Tiersen', 3, 140, 'Modern piano', 'Rolling left-hand pattern under a simple tune.'],
+    ['Fly Me to the Moon', 'Bart Howard', 3, 150, 'Pop & standards', 'Jazz standard with a walking feel.'],
+    ['Träumerei', 'Schumann', 3, 165, 'Classical', 'Lyrical and slow. Needs a calm touch.'],
+    ['Waltz in A minor, B. 150', 'Chopin', 3, 170, 'Classical', 'One of the more approachable Chopin waltzes.'],
+    ['Für Elise', 'Beethoven', 3, 170, 'Classical', 'The famous opening is easy. The middle section takes work.'],
+    ['Sonatina in C, Op. 36 No. 1 (1st movement)', 'Clementi', 3, 170, 'Classical', 'Clean scales and Alberti bass. Good technique piece.'],
+    ['Clocks', 'Coldplay', 3, 187, 'Pop & standards', 'Driving repeated chord pattern.'],
+    ['Gymnopédie No. 1', 'Satie', 3, 190, 'Classical', 'Slow and sparse. Few notes, lots of feeling.'],
+    ['Gnossienne No. 1', 'Satie', 3, 190, 'Classical', 'Free rhythm and a haunting melody.'],
+    ['Canon in D', 'Pachelbel', 3, 200, 'Classical', 'Repeating bass with a melody that grows.'],
+    ['The Entertainer', 'Scott Joplin', 3, 210, 'Jazz & ragtime', 'Classic ragtime with syncopation.'],
+    ['River Flows in You', 'Yiruma', 3, 220, 'Modern piano', 'Flowing right-hand arpeggios.'],
+
+    ['Minute Waltz, Op. 64 No. 1', 'Chopin', 4, 110, 'Classical', 'Fast and light. Short but demanding.'],
+    ['Megalovania', 'Toby Fox', 4, 155, 'Film & games', 'Fast and rhythmic with a busy left hand.'],
+    ['Golliwogg’s Cakewalk', 'Debussy', 4, 170, 'Classical', 'Playful ragtime feel with tricky rhythms.'],
+    ['Maple Leaf Rag', 'Scott Joplin', 4, 195, 'Jazz & ragtime', 'Stride left hand and quick jumps.'],
+    ['Rondo alla Turca', 'Mozart', 4, 210, 'Classical', 'Bright and fast with a rolling left hand.'],
+    ['Nocturne in E-flat, Op. 9 No. 2', 'Chopin', 4, 270, 'Classical', 'Long singing melody with ornaments.'],
+    ['Clair de Lune', 'Debussy', 4, 300, 'Classical', 'Needs soft touch and careful pedalling.'],
+    ['Moonlight Sonata (1st movement)', 'Beethoven', 4, 330, 'Classical', 'Steady triplets under a slow melody.'],
+
+    ['Flight of the Bumblebee', 'Rimsky-Korsakov', 5, 80, 'Classical', 'Non-stop chromatic runs at speed.'],
+    ['Étude Op. 25 No. 1 “Aeolian Harp”', 'Chopin', 5, 140, 'Classical', 'Even, quiet arpeggios for the right hand.'],
+    ['Étude Op. 10 No. 12 “Revolutionary”', 'Chopin', 5, 160, 'Classical', 'Fast left-hand runs and big chords.'],
+    ['Prelude in C-sharp minor, Op. 3 No. 2', 'Rachmaninoff', 5, 200, 'Classical', 'Heavy chords and a huge climax.'],
+    ['Fantaisie-Impromptu', 'Chopin', 5, 300, 'Classical', 'Four against three between the hands.'],
+    ['La Campanella', 'Liszt', 5, 290, 'Classical', 'Fast jumps and repeated notes.']
+  ];
+  SONGS = SONGS.map(function (s, i) {
+    return { id: i, title: s[0], by: s[1], level: s[2], sec: s[3], style: s[4], note: s[5] };
+  });
+  var STYLES = [];
+  SONGS.forEach(function (s) { if (STYLES.indexOf(s.style) < 0) STYLES.push(s.style); });
+
+  var KEY = 'threeMinutePiano.v1';
+  var state = { levels: [2, 3], max: 180, styles: [], q: '', sort: 'time', view: 'all' };
+  var marks = {}; // id -> { saved, learned }
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (!raw) return;
+      var d = JSON.parse(raw);
+      if (d && d.state) {
+        if (Array.isArray(d.state.levels)) state.levels = d.state.levels.filter(function (n) { return n >= 1 && n <= 5; });
+        if (typeof d.state.max === 'number') state.max = Math.min(360, Math.max(60, d.state.max));
+        if (Array.isArray(d.state.styles)) state.styles = d.state.styles.filter(function (s) { return STYLES.indexOf(s) >= 0; });
+        if (typeof d.state.sort === 'string') state.sort = d.state.sort;
+      }
+      if (d && d.marks && typeof d.marks === 'object') marks = d.marks;
+    } catch (e) {}
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify({ state: { levels: state.levels, max: state.max, styles: state.styles, sort: state.sort }, marks: marks })); } catch (e) {}
+  }
+
+  function fmt(sec) {
+    var m = Math.floor(sec / 60), s = sec % 60;
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function mark(id) { return marks[id] || {}; }
+  function levelName(n) { return LEVELS[n - 1].name; }
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  // build level keys
+  var keysEl = $('keys');
+  LEVELS.forEach(function (L) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'key'; b.dataset.n = L.n;
+    b.setAttribute('aria-label', 'Level ' + L.n + ', ' + L.name);
+    b.innerHTML = '<span class="num">' + L.n + '</span><span class="nm">' + L.name + '</span>';
+    keysEl.appendChild(b);
+  });
+  $('guide').innerHTML = LEVELS.map(function (L) { return '<dt>' + L.n + ' ' + L.name + '</dt><dd>' + L.desc + '</dd>'; }).join('');
+
+  // style chips
+  var genresEl = $('genres');
+  STYLES.forEach(function (s) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.dataset.style = s; b.textContent = s;
+    genresEl.appendChild(b);
+  });
+
+  var pickId = null;
+
+  function matches() {
+    var q = state.q.trim().toLowerCase();
+    var list = SONGS.filter(function (s) {
+      if (state.levels.length && state.levels.indexOf(s.level) < 0) return false;
+      if (state.max < 360 && s.sec > state.max) return false;
+      if (state.styles.length && state.styles.indexOf(s.style) < 0) return false;
+      if (q && (s.title + ' ' + s.by).toLowerCase().indexOf(q) < 0) return false;
+      var m = mark(s.id);
+      if (state.view === 'saved' && !m.saved) return false;
+      if (state.view === 'learned' && !m.learned) return false;
+      return true;
+    });
+    var sorts = {
+      time: function (a, b) { return a.sec - b.sec || a.title.localeCompare(b.title); },
+      timeDesc: function (a, b) { return b.sec - a.sec || a.title.localeCompare(b.title); },
+      level: function (a, b) { return a.level - b.level || a.sec - b.sec; },
+      az: function (a, b) { return a.title.localeCompare(b.title); }
+    };
+    return list.sort(sorts[state.sort] || sorts.time);
+  }
+
+  function rowHTML(s) {
+    var m = mark(s.id), pips = '';
+    for (var i = 1; i <= 5; i++) pips += '<i class="' + (i <= s.level ? 'on' : '') + '"></i>';
+    var q1 = encodeURIComponent(s.title + ' ' + s.by);
+    var yt = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(s.title + ' ' + s.by + ' piano tutorial');
+    var ms = 'https://musescore.com/sheetmusic?text=' + q1;
+    return '<li class="song' + (pickId === s.id ? ' pick' : '') + '" id="song-' + s.id + '" data-id="' + s.id + '">' +
+      '<div class="info"><div class="meta"><span class="pips" aria-hidden="true">' + pips + '</span>' +
+      '<span>Level ' + s.level + ' · ' + levelName(s.level) + ' · ' + esc(s.style) + '</span></div>' +
+      '<h3>' + esc(s.title) + '</h3><p class="by">' + esc(s.by) + '</p><p class="note">' + esc(s.note) + '</p></div>' +
+      '<div class="time">' + fmt(s.sec) + '<small>about</small></div>' +
+      '<div class="acts">' +
+      '<button type="button" class="chip on-saved" data-act="saved" aria-pressed="' + !!m.saved + '">' + (m.saved ? 'Saved' : 'Save for later') + '</button>' +
+      '<button type="button" class="chip on-learned" data-act="learned" aria-pressed="' + !!m.learned + '">' + (m.learned ? 'Learned' : 'Mark as learned') + '</button>' +
+      '<a class="chip" href="' + ms + '" target="_blank" rel="noopener noreferrer">Sheet music ↗</a>' +
+      '<a class="chip" href="' + yt + '" target="_blank" rel="noopener noreferrer">Tutorial ↗</a>' +
+      '</div></li>';
+  }
+
+  function counts() {
+    var saved = 0, learned = 0;
+    Object.keys(marks).forEach(function (k) { if (marks[k].saved) saved++; if (marks[k].learned) learned++; });
+    return { saved: saved, learned: learned };
+  }
+
+  function render() {
+    // keys
+    Array.prototype.forEach.call(keysEl.querySelectorAll('.key'), function (b) {
+      b.setAttribute('aria-pressed', state.levels.indexOf(+b.dataset.n) >= 0 ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(genresEl.children, function (b) {
+      b.setAttribute('aria-pressed', state.styles.indexOf(b.dataset.style) >= 0 ? 'true' : 'false');
+    });
+    $('max').value = state.max;
+    $('readout').textContent = state.max >= 360 ? 'Any length' : 'Up to ' + fmt(state.max);
+    $('sort').value = state.sort;
+
+    var c = counts();
+    var views = [['all', 'All'], ['saved', 'Saved (' + c.saved + ')'], ['learned', 'Learned (' + c.learned + ')']];
+    $('views').innerHTML = views.map(function (v) {
+      return '<button type="button" class="chip" data-view="' + v[0] + '" aria-pressed="' + (state.view === v[0]) + '">' + v[1] + '</button>';
+    }).join('');
+
+    var res = matches();
+    var lv = state.levels.length ? state.levels.slice().sort().map(levelName).join(' + ') : 'all levels';
+    $('summary').innerHTML = '<strong>' + res.length + (res.length === 1 ? ' piece' : ' pieces') + '</strong> · ' +
+      (state.max >= 360 ? 'any length' : 'up to ' + fmt(state.max)) + ' · ' + esc(lv);
+
+    var list = $('list');
+    if (!res.length) {
+      var msg = state.view === 'saved' ? ['Nothing saved yet', 'Tap “Save for later” on a piece and it will show up here.'] :
+        state.view === 'learned' ? ['Nothing learned yet', 'Mark a piece as learned and it will show up here.'] :
+        ['No pieces fit', 'Try a longer time limit, add a neighbouring level, or clear the style filter.'];
+      list.innerHTML = '<li class="empty"><strong>' + msg[0] + '</strong>' + msg[1] + '</li>';
+    } else {
+      list.innerHTML = res.map(rowHTML).join('');
+    }
+    $('surprise').disabled = !res.length;
+  }
+
+  function change() { save(); render(); }
+
+  keysEl.addEventListener('click', function (e) {
+    var b = e.target.closest('.key'); if (!b) return;
+    var n = +b.dataset.n, i = state.levels.indexOf(n);
+    if (i >= 0) state.levels.splice(i, 1); else state.levels.push(n);
+    pickId = null; change();
+  });
+  genresEl.addEventListener('click', function (e) {
+    var b = e.target.closest('.chip'); if (!b) return;
+    var s = b.dataset.style, i = state.styles.indexOf(s);
+    if (i >= 0) state.styles.splice(i, 1); else state.styles.push(s);
+    pickId = null; change();
+  });
+  $('max').addEventListener('input', function (e) { state.max = +e.target.value; pickId = null; change(); });
+  $('q').addEventListener('input', function (e) { state.q = e.target.value; pickId = null; render(); });
+  $('sort').addEventListener('change', function (e) { state.sort = e.target.value; change(); });
+  $('views').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-view]'); if (!b) return;
+    state.view = b.dataset.view; pickId = null; render();
+  });
+  $('list').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-act]'); if (!b) return;
+    var li = b.closest('.song'), id = +li.dataset.id, act = b.dataset.act;
+    var m = marks[id] || (marks[id] = {});
+    m[act] = !m[act];
+    if (!m.saved && !m.learned) delete marks[id];
+    save();
+    if (state.view === 'all') {
+      var on = !!m[act];
+      b.setAttribute('aria-pressed', on);
+      b.textContent = act === 'saved' ? (on ? 'Saved' : 'Save for later') : (on ? 'Learned' : 'Mark as learned');
+      var c = counts();
+      var vs = $('views').querySelectorAll('[data-view]');
+      vs[1].textContent = 'Saved (' + c.saved + ')';
+      vs[2].textContent = 'Learned (' + c.learned + ')';
+    } else {
+      render();
+    }
+  });
+  $('surprise').addEventListener('click', function () {
+    var res = matches().filter(function (s) { return !mark(s.id).learned; });
+    if (!res.length) res = matches();
+    if (!res.length) return;
+    var s = res[Math.floor(Math.random() * res.length)];
+    pickId = s.id; render();
+    var el = $('song-' + s.id);
+    if (el) {
+      var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'center' });
+    }
+  });
+
+  load();
+  render();
+})();
+</script>
