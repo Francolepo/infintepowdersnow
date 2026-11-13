@@ -21,4 +21,4 @@ with tempfile.TemporaryDirectory() as tmp:
     notes = synth.demo_piece(bpm=92, jitter=0.012)
     print("Rendering the synthetic video (about half a minute) ...")
     synth.render_video(notes, video, width=960, height=540, fps=30, style="burn", seconds_visible=3.0)
-    main([video, "-o", str(out), "--title", "Ode to Joy (synthetic demo)"])
+    main([video, "-o", str(out), "--title", "Ode to Joy (synthetic demo)", "--hands", "pitch"])  # cartoon hands: split by pitch

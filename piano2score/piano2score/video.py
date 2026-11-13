@@ -107,20 +107,23 @@ def sample_frames(info: VideoInfo, n: int = 48, t_start: float = 0.0,
     return frames
 
 
-def read_strip_series(info: VideoInfo, y0: float, y1: float, stride: int = 1,
-                      t_start: float = 0.0, t_end: Optional[float] = None,
-                      progress: Optional[Callable[[float], None]] = None
-                      ) -> tuple[np.ndarray, np.ndarray]:
-    """Read a thin horizontal band from every ``stride``-th frame.
+def read_strips(info: VideoInfo, bands: list[tuple[float, float]], stride: int = 1,
+                t_start: float = 0.0, t_end: Optional[float] = None,
+                progress: Optional[Callable[[float], None]] = None
+                ) -> tuple[np.ndarray, list[np.ndarray]]:
+    """Read several thin horizontal bands from every ``stride``-th frame in one pass.
 
-    ``y0``/``y1`` are rows in *processing* coordinates.  Each frame's band is
-    averaged over its rows, giving one RGB row per frame: the result is a
-    ``(T, W, 3)`` uint8 array plus the ``(T,)`` timestamps.  A thin band is all
+    Each ``(y0, y1)`` is a pair of rows in *processing* coordinates.  A band is averaged over
+    its rows, giving one RGB row per frame: for every band the result is a ``(T, W, 3)``
+    uint8 array (same ``T`` for all bands) next to the ``(T,)`` timestamps.  A thin band is all
     the note detector needs, so memory stays small even for long videos.
     """
     s = info.scale
-    r0 = int(np.clip(round(y0 * s), 0, info.height - 1))
-    r1 = int(np.clip(round(y1 * s), r0 + 1, info.height))
+    rows_of = []
+    for y0, y1 in bands:
+        r0 = int(np.clip(round(y0 * s), 0, info.height - 1))
+        r1 = int(np.clip(round(y1 * s), r0 + 1, info.height))
+        rows_of.append((r0, r1))
     pw = info.proc_size[0]
     f_start = int(t_start * info.fps)
     f_end = info.frame_count if t_end is None else min(info.frame_count, int(t_end * info.fps))
@@ -128,7 +131,7 @@ def read_strip_series(info: VideoInfo, y0: float, y1: float, stride: int = 1,
     cap = cv2.VideoCapture(info.path)
     if f_start > 0:
         cap.set(cv2.CAP_PROP_POS_FRAMES, f_start)
-    rows: list[np.ndarray] = []
+    rows: list[list[np.ndarray]] = [[] for _ in bands]
     times: list[float] = []
     idx = f_start
     last_report = -1.0
@@ -138,16 +141,54 @@ def read_strip_series(info: VideoInfo, y0: float, y1: float, stride: int = 1,
         if (idx - f_start) % stride == 0:
             ok, fr = cap.retrieve()
             if ok and fr is not None:
-                band = fr[r0:r1].mean(axis=0, dtype=np.float32)  # (W_orig, 3)
-                if band.shape[0] != pw:
-                    band = cv2.resize(band[None], (pw, 1), interpolation=cv2.INTER_AREA)[0]
-                rows.append(np.clip(band, 0, 255).astype(np.uint8))
+                for bi, (r0, r1) in enumerate(rows_of):
+                    band = fr[r0:r1].mean(axis=0, dtype=np.float32)  # (W_orig, 3)
+                    if band.shape[0] != pw:
+                        band = cv2.resize(band[None], (pw, 1), interpolation=cv2.INTER_AREA)[0]
+                    rows[bi].append(np.clip(band, 0, 255).astype(np.uint8))
                 times.append(idx / info.fps)
         idx += 1
         if progress and (idx - f_start) / max(f_end - f_start, 1) - last_report > 0.02:
             last_report = (idx - f_start) / max(f_end - f_start, 1)
             progress(last_report)
     cap.release()
-    if not rows:
+    if not times:
         raise RuntimeError("No frames could be read from the selected time range.")
-    return np.asarray(times, dtype=np.float64), np.stack(rows)
+    return np.asarray(times, dtype=np.float64), [np.stack(r) for r in rows]
+
+
+def read_strip_series(info: VideoInfo, y0: float, y1: float, stride: int = 1,
+                      t_start: float = 0.0, t_end: Optional[float] = None,
+                      progress: Optional[Callable[[float], None]] = None
+                      ) -> tuple[np.ndarray, np.ndarray]:
+    """One band from every ``stride``-th frame (see :func:`read_strips`)."""
+    times, strips = read_strips(info, [(y0, y1)], stride, t_start, t_end, progress)
+    return times, strips[0]
+
+
+def iter_frames(info: VideoInfo, fps: float, t_start: float = 0.0, t_end: Optional[float] = None,
+                rows: Optional[tuple[int, int]] = None):
+    """Yield ``(time, BGR image)`` at roughly ``fps`` frames per second.
+
+    Images are at processing resolution.  ``rows=(y0, y1)`` (processing coordinates) crops
+    them vertically before they are yielded.
+    """
+    stride = max(1, int(round(info.fps / max(fps, 1e-3))))
+    f_start = int(t_start * info.fps)
+    f_end = info.frame_count if t_end is None else min(info.frame_count, int(t_end * info.fps))
+    cap = cv2.VideoCapture(info.path)
+    if f_start > 0:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, f_start)
+    idx = f_start
+    while idx < f_end:
+        if not cap.grab():
+            break
+        if (idx - f_start) % stride == 0:
+            ok, fr = cap.retrieve()
+            if ok and fr is not None:
+                fr = _to_proc(fr, info)
+                if rows is not None:
+                    fr = fr[max(0, rows[0]):rows[1]]
+                yield idx / info.fps, fr
+        idx += 1
+    cap.release()

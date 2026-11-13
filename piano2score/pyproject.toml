@@ -10,7 +10,8 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
     "numpy",
-    "opencv-python-headless",
+    "opencv-contrib-python",
+    "mediapipe",
     "music21",
     "yt-dlp",
     "verovio",

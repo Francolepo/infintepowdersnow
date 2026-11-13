@@ -27,6 +27,7 @@ class SynthNote:
     t_off: float
     beat_on: float = 0.0     # ideal position in quarter notes (ground truth for the score)
     beat_off: float = 0.0
+    hand: str = ""           # 'L' / 'R': which hand plays it (ground truth), if known
 
 
 # --------------------------------------------------------------------------- the demo piece
@@ -94,6 +95,47 @@ def stress_piece(bpm: float = 80.0, jitter: float = 0.0, drift: float = 0.0, see
     return sorted(notes, key=lambda n: (n.t_on, n.midi))
 
 
+def hands_piece(bpm: float = 90.0, jitter: float = 0.0, seed: int = 1, articulation: float = 0.9) -> list[SynthNote]:
+    """12 bars where a split at middle C gets the hands wrong, but the hands never cross.
+
+    bars 1-4:  ordinary: right hand melody above C4, left hand bass below.
+    bars 5-8:  the right hand plays low (down to G3), the left hand plays low bass.
+    bars 9-12: the left hand takes the tune *above* middle C while the right hand holds
+               chords still higher.
+    """
+    rng = random.Random(seed)
+    ev: list[tuple[float, int, float, str]] = []           # (beat, midi, beats, hand)
+
+    def add(beat, midis, dur, hand):
+        for m in (midis if isinstance(midis, (list, tuple)) else [midis]):
+            ev.append((beat, m, dur, hand))
+
+    for bar, (mel, bass) in enumerate([([64, 65, 67, 69], 48), ([67, 65, 64, 62], 43),
+                                       ([60, 62, 64, 65], 48), ([64, 62, 60, 64], 43)]):
+        for i, m in enumerate(mel):
+            add(bar * 4 + i, m, 1, "R")
+        add(bar * 4, [bass, bass + 7], 4, "L")
+    for bar, (mel, bass) in enumerate([([59, 60, 62, 60], 45), ([59, 57, 55, 57], 43),
+                                       ([59, 60, 62, 64], 45), ([62, 60, 59, 55], 43)]):
+        for i, m in enumerate(mel):
+            add(16 + bar * 4 + i, m, 1, "R")
+        for i in range(2):
+            add(16 + bar * 4 + 2 * i, bass - 5 * (i % 2), 2, "L")
+    for bar, mel in enumerate([[60, 62, 64, 62], [60, 59, 57, 55], [62, 64, 65, 64], [62, 60, 60, 60]]):
+        for i, m in enumerate(mel):
+            add(32 + bar * 4 + i, m, 1, "L")
+        add(32 + bar * 4, [72, 76], 4, "R")
+
+    def to_time(beat: float) -> float:
+        return beat * 60.0 / bpm
+    notes = []
+    for beat, m, dur, hand in ev:
+        j = rng.gauss(0, jitter) if jitter else 0.0
+        notes.append(SynthNote(m, to_time(beat) + j, to_time(beat + dur * articulation) + j,
+                               beat, beat + dur, hand))
+    return sorted(notes, key=lambda n: (n.t_on, n.midi))
+
+
 # --------------------------------------------------------------------------- rendering
 class _Layout:
     def __init__(self, W: int, H: int):
@@ -144,10 +186,31 @@ def _hand(canvas: np.ndarray, L: _Layout, xc: float, spread: float) -> None:
         cv2.circle(canvas, (int(fx), int(fy)), max(1, int(0.34 * w)), (90, 150, 220), -1, cv2.LINE_AA)
 
 
+def _paste_sprite(img: np.ndarray, sprite: dict, x_center: float, y_top: float) -> None:
+    """Alpha-blend a hand picture onto ``img``.  ``sprite``: {'img' BGR, 'alpha' 0..1, 'cx'}."""
+    pic, alpha = sprite["img"], sprite["alpha"]
+    h, w = alpha.shape
+    x0 = int(round(x_center - sprite["cx"]))
+    y0 = int(round(y_top))
+    xs0, ys0 = max(0, -x0), max(0, -y0)
+    xs1, ys1 = min(w, img.shape[1] - x0), min(h, img.shape[0] - y0)
+    if xs1 <= xs0 or ys1 <= ys0:
+        return
+    a = alpha[ys0:ys1, xs0:xs1, None]
+    dst = img[y0 + ys0:y0 + ys1, x0 + xs0:x0 + xs1]
+    dst[:] = dst * (1 - a) + pic[ys0:ys1, xs0:xs1].astype(np.float32) * a
+
+
 def render_video(notes: list[SynthNote], path: str, width: int = 1280, height: int = 720,
                  fps: float = 30.0, seconds_visible: float = 3.2, style: str = "burn",
-                 tail: float = 1.5, lead: float = 3.0, seed: int = 0, noise: float = 2.0) -> float:
+                 tail: float = 1.5, lead: float = 3.0, seed: int = 0, noise: float = 2.0,
+                 sprites: dict | None = None) -> float:
     """Render ``notes`` to an mp4.  Returns the video duration in seconds.
+
+    ``sprites={'L': {...}, 'R': {...}}`` replaces the cartoon hands by pictures (see
+    ``_paste_sprite``; each also has 'top', the sprite's top edge relative to the keyboard top in
+    pixels).  The hands then follow the notes of their own hand when the notes carry a ``hand``
+    label, otherwise the notes below/above middle C.
 
     ``style='burn'`` consumes each bar in a sparkle beam about 2.4 key-widths above the
     keys (like the reference video); ``'classic'`` lets bars fall right onto the keys.
@@ -217,12 +280,23 @@ def render_video(notes: list[SynthNote], path: str, width: int = 1280, height: i
             kw = 0.5 * L.w
             y_a = L.top
             img[y_a:L.bottom, int(xc - kw / 2):int(xc + kw / 2)] += np.array([20, 70, 60], np.float32) * 0.9
-        lo = [L.x(m) for m in active if m < 60]
-        hi = [L.x(m) for m in active if m >= 60]
+        if any(n.hand for n in notes):               # hands follow the notes they really play
+            near = {"L": [], "R": []}
+            for n in notes:
+                if n.hand and n.t_on - 0.35 <= t < n.t_off:
+                    near[n.hand].append(L.x(n.midi))
+            lo, hi = near["L"], near["R"]
+        else:
+            lo = [L.x(m) for m in active if m < 60]
+            hi = [L.x(m) for m in active if m >= 60]
         hx["L"] += 0.25 * ((np.mean(lo) if lo else hx["L"]) - hx["L"])
         hx["R"] += 0.25 * ((np.mean(hi) if hi else hx["R"]) - hx["R"])
-        _hand(img, L, hx["L"], 1.0)
-        _hand(img, L, hx["R"], 1.0)
+        if sprites:
+            for side in ("L", "R"):
+                _paste_sprite(img, sprites[side], hx[side], L.top + sprites[side]["top"])
+        else:
+            _hand(img, L, hx["L"], 1.0)
+            _hand(img, L, hx["R"], 1.0)
         img[:int(0.04 * height)] = 0                                   # letterbox bars
         img[-int(0.04 * height):] = 0
         img += rng.normal(0, noise, img.shape)

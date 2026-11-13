@@ -6,7 +6,7 @@ from piano2score.cli import main
 def test_cli_end_to_end(mini_video, tmp_path: Path):
     path, truth = mini_video
     out = tmp_path / "out"
-    rc = main([path, "-o", str(out), "--title", "Test piece"])
+    rc = main([path, "-o", str(out), "--title", "Test piece", "--hands", "pitch"])
     assert rc == 0
     assert (out / "Test_piece.musicxml").stat().st_size > 1000
     assert (out / "Test_piece.mid").exists()

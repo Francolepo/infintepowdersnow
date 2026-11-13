@@ -1,5 +1,6 @@
 numpy
-opencv-python-headless
+opencv-contrib-python
+mediapipe
 music21
 yt-dlp
 verovio

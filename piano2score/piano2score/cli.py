@@ -57,7 +57,15 @@ def build_parser() -> argparse.ArgumentParser:
                    help="grid slots per quarter note: 4 = 16ths (default), 2 = 8ths, 3 = 8th-note triplets")
     g.add_argument("--pickup", type=float, default=0.0, metavar="BEATS",
                    help="length of a pick-up (anacrusis) in beats; default: first note starts bar 1")
-    g.add_argument("--split", default="C4", help="notes from this pitch up go to the right hand (default C4)")
+    g = p.add_argument_group("left / right hand")
+    g.add_argument("--hands", choices=("auto", "video", "pitch"), default="auto",
+                   help="how notes are given to the hands: 'video' tracks the real hands in the video, "
+                        "'pitch' splits at --split, 'auto' (default) uses the video when hands are visible "
+                        "and falls back to pitch otherwise")
+    g.add_argument("--hand-fps", type=float, default=15.0, help="hand-tracking frames per second (default 15)")
+    g.add_argument("--split", default="C4", help="pitch split (and fallback): this note and above is the "
+                                                  "right hand (default C4)")
+    g = p.add_argument_group("more music options")
     g.add_argument("--track", choices=("auto", "on", "off"), default="auto",
                    help="follow tempo changes (auto: only when the playing drifts)")
     g.add_argument("--no-pdf", action="store_true", help="skip the PDF (MusicXML and MIDI are still written)")
@@ -79,6 +87,57 @@ def _sanity_check(det, kb, y0: int, offset: float) -> list[str]:
         if len(det.notes) / span > 14:
             out.append("an unusually large number of notes per second was found; see the hint above")
     return out
+
+
+def _second_band(kb, offset: float):
+    """A second reading band 1.5 key-widths above (or, if there is no room, below) the first."""
+    for off in (offset + 1.5, offset - 1.5):
+        if off < 0.8:
+            continue
+        rows = kb.strip_rows(off)
+        if rows[0] >= 3:
+            return off, rows
+    return None
+
+
+def _hand_stage(args, info, kb, det, det_b, band_b, band_a, dbg: Path) -> str:
+    """Track the hands and give every detected note to the left or right hand."""
+    from . import hands, keyboard
+
+    ca = kb.y_top - (band_a[0] + band_a[1]) / 2.0
+    timing = None
+    if det_b is not None and band_b is not None:
+        cb = kb.y_top - (band_b[1][0] + band_b[1][1]) / 2.0
+        timing = hands.estimate_fall_delay(det.notes, det_b.notes, ca, cb)
+    if timing:
+        print(f"Bars fall at ~{timing.speed / kb.white_w:.1f} key-widths per second: a note is pressed "
+              f"{timing.delay:.2f} s after it enters the reading band")
+    else:
+        print("! Could not measure how fast the bars fall; matching hands to notes over a wider time window")
+
+    last = [-1.0]
+
+    def progress(frac: float) -> None:
+        if frac - last[0] >= 0.05:
+            last[0] = frac
+            print(f"\rTracking hands ... {max(0.0, min(frac, 1.0)) * 100:3.0f}%", end="", flush=True)
+
+    t = time.time()
+    track = hands.track_hands(info, kb, args.start, args.end, args.hand_fps, progress)
+    cov = track.coverage()
+    print(f"\rTracking hands ... done ({len(track.frames)} frames, {time.time() - t:.0f} s; "
+          f"left hand seen in {cov['L'] * 100:.0f}% of frames, right hand in {cov['R'] * 100:.0f}%)")
+    if track.debug_image is not None:
+        cv2.imwrite(str(dbg / "hands.png"), track.debug_image)
+    if max(cov.values()) < 0.2:
+        if args.hands == "video":
+            print("! Hardly any hands were found in the video; the result will mostly follow pitch")
+        else:
+            print("! Hardly any hands were found in the video, so the hands are split by pitch")
+            return f"no hands visible in the video: split by pitch at {args.split}"
+    stats = hands.assign_hands(det.notes, kb, track, timing.delay if timing else None,
+                               split_midi=keyboard.parse_note(args.split))
+    return stats.summary()
 
 
 def main(argv=None) -> int:
@@ -132,11 +191,14 @@ def main(argv=None) -> int:
             last[0] = frac
             print(f"\rReading video ... {frac * 100:3.0f}%", end="", flush=True)
 
+    # a second band at another height measures how fast the bars fall (needed to know when each
+    # key is really pressed, for the hand assignment)
+    band_b = _second_band(kb, args.strip_offset) if args.hands != "pitch" else None
+    bands = [(y0, y1)] + ([band_b[1]] if band_b else [])
     t = time.time()
-    times, strip = video.read_strip_series(info, y0, y1, stride, args.start, args.end, progress)
+    times, strips = video.read_strips(info, bands, stride, args.start, args.end, progress)
     print(f"\rReading video ... done ({len(times)} frames, {time.time() - t:.0f} s)")
-    det = detect.detect_notes(times, strip, kb, threshold=args.threshold, min_ms=args.min_note_ms)
-    cv2.imwrite(str(dbg / "piano_roll.png"), detect.render_piano_roll(det, kb))
+    det = detect.detect_notes(times, strips[0], kb, threshold=args.threshold, min_ms=args.min_note_ms)
     print(f"Detected {len(det.notes)} notes (brightness threshold {det.threshold:.0f})")
     reading_warnings = _sanity_check(det, kb, y0, args.strip_offset)
     for w in reading_warnings:
@@ -147,7 +209,21 @@ def main(argv=None) -> int:
               file=sys.stderr)
         return 1
 
-    # ------------------------------------------------------------------ 4. rhythm and score
+    # ------------------------------------------------------------------ 4. which hand plays what
+    hand_report = "split by pitch at " + args.split
+    if args.hands != "pitch":
+        det_b = detect.detect_notes(times, strips[1], kb, threshold=args.threshold,
+                                    min_ms=args.min_note_ms) if band_b else None
+        try:
+            hand_report = _hand_stage(args, info, kb, det, det_b, band_b, (y0, y1), dbg)
+        except RuntimeError as e:
+            if args.hands == "video":
+                print(f"Hand tracking failed: {e}", file=sys.stderr)
+                return 1
+            print(f"! Hand tracking unavailable ({e}); splitting hands by pitch instead")
+    cv2.imwrite(str(dbg / "piano_roll.png"), detect.render_piano_roll(det, kb))
+
+    # ------------------------------------------------------------------ 5. rhythm and score
     num, den = (int(x) for x in args.time_sig.split("/"))
     r = rhythm.quantize(det.notes, sub=args.subdivision, bpm=args.bpm, track=args.track)
     sc, sinfo = score.build_score(r, title=title, time_sig=(num, den), split=keyboard.parse_note(args.split),
@@ -160,6 +236,7 @@ def main(argv=None) -> int:
         reason = score.render_pdf(xml_path, pdf_path)
 
     print()
+    print(f"Hands: {hand_report}")
     print(f"Tempo ~{sinfo.bpm:.0f} bpm{' (follows tempo changes)' if r.tracked else ''}, "
           f"{args.time_sig}, key {sinfo.key}, {sinfo.bars} bars, "
           f"{sinfo.notes_rh} right-hand and {sinfo.notes_lh} left-hand notes")
@@ -170,7 +247,7 @@ def main(argv=None) -> int:
     print(f"  {mid_path}   (the performance as played in the video)")
     if not args.no_pdf:
         print(f"  {pdf_path}" if reason is None else f"  (PDF skipped: {reason})")
-    print(f"  {dbg}/   (calibration.png, piano_roll.png: check these if the result looks wrong)")
+    print(f"  {dbg}/   (calibration.png, piano_roll.png, hands.png: check these if the result looks wrong)")
     return 0
 
 

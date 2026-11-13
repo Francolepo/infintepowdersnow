@@ -27,6 +27,7 @@ class QNote:
     midi: int
     start: int        # grid units from the beginning of the piece
     dur: int          # grid units (>= 1)
+    hand: Optional[str] = None   # 'R' / 'L' when known, else decided by pitch
 
 
 @dataclass
@@ -248,6 +249,6 @@ def quantize(notes: list[RawNote], sub: int = 4, bpm: Optional[float] = None,
     for i, n in enumerate(notes):
         start = int(g[ev_of[i]]) - g0
         end = int(round(float(to_units(n.offset)))) - g0
-        qn.append(QNote(n.midi, start, max(1, end - start)))
+        qn.append(QNote(n.midi, start, max(1, end - start), n.hand))
     qn.sort(key=lambda q: (q.start, q.midi))
     return Rhythm(float(bpm_out), sub, qn, fit, use_tracking, warnings)

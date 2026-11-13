@@ -133,7 +133,7 @@ def _tidy(events: list[Event], overlap_tol: int, legato_fill: int, sub: int) -> 
                 e.dur = s2 - e.start
                 continue
         beat_end = -(-e.end // sub) * sub
-        tol = max(legato_fill, int(round(0.15 * e.dur)))      # long notes are released a bit earlier
+        tol = max(legato_fill, int(round(0.2 * e.dur)))       # long notes are released a bit earlier
         if e.end % sub and beat_end - e.end <= tol and (s2 is None or s2 >= beat_end):
             e.dur = beat_end - e.start
 
@@ -300,13 +300,16 @@ def build_score(r: Rhythm, title: str = "Transcription", time_sig: tuple[int, in
     num, den = time_sig
     bar_units = int(round(num * 4 / den * sub))
     lead = (bar_units - int(round(pickup_beats * sub))) % bar_units if pickup_beats else 0
-    notes = [QNote(n.midi, n.start + lead, n.dur) for n in r.notes]
+    notes = [QNote(n.midi, n.start + lead, n.dur, n.hand) for n in r.notes]
     tonic, mode, sharps = key or estimate_key(notes)
     flats = sharps < 0
     info = ScoreInfo(key=key_name(tonic, mode), bpm=r.bpm)
     info.warnings.extend(r.warnings)
 
-    hands = {"R": [n for n in notes if n.midi >= split], "L": [n for n in notes if n.midi < split]}
+    # a hand decided from the video wins; otherwise fall back to splitting by pitch
+    def _hand(n: QNote) -> str:
+        return n.hand if n.hand in ("R", "L") else ("R" if n.midi >= split else "L")
+    hands = {"R": [n for n in notes if _hand(n) == "R"], "L": [n for n in notes if _hand(n) == "L"]}
     info.notes_rh, info.notes_lh = len(hands["R"]), len(hands["L"])
     end = max((n.start + n.dur for n in notes), default=bar_units)
     n_bars = max(1, int(np.ceil(end / bar_units)))

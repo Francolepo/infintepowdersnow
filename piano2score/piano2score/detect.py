@@ -23,6 +23,8 @@ class RawNote:
     onset: float      # seconds
     offset: float     # seconds
     strength: float = 1.0   # mean coverage (0..1), a rough confidence
+    hand: Optional[str] = None   # 'R' or 'L' once known (see hands.py)
+    hand_source: str = ""        # 'video', 'neighbours' or 'pitch'
 
     @property
     def duration(self) -> float:
@@ -237,7 +239,8 @@ def detect_notes(times: np.ndarray, strip: np.ndarray, kb: Keyboard,
 
 # --------------------------------------------------------------------------- debug picture
 def render_piano_roll(det: Detection, kb: Keyboard, max_width: int = 3000) -> np.ndarray:
-    """Key x time picture: grey = raw coverage, coloured bars = detected notes."""
+    """Key x time picture: grey = raw coverage, coloured bars = detected notes
+    (orange = right hand, blue = left hand, once known)."""
     T, K = det.coverage.shape
     step = max(1, int(np.ceil(T / max_width)))
     cov = det.coverage[: T - T % step].reshape(-1, step, K).max(axis=1)      # (T', K)
@@ -250,5 +253,11 @@ def render_piano_roll(det: Detection, kb: Keyboard, max_width: int = 3000) -> np
         y = (K - 1 - r) * 6
         a = int(n.onset / det.frame_dt / step)
         b = max(a + 1, int(n.offset / det.frame_dt / step))
-        cv2.rectangle(img, (a, y), (b, y + 5), (0, 200, 255) if not kb.black_mask[r] else (255, 160, 0), -1)
+        if n.hand == "R":
+            col = (40, 170, 255)                     # orange: right hand
+        elif n.hand == "L":
+            col = (255, 140, 60)                     # blue: left hand
+        else:
+            col = (0, 200, 255) if not kb.black_mask[r] else (255, 160, 0)
+        cv2.rectangle(img, (a, y), (b, y + 5), col, -1)
     return img
