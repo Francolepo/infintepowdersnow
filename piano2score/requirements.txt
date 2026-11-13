@@ -1,0 +1,7 @@
+numpy
+opencv-python-headless
+music21
+yt-dlp
+verovio
+cairosvg
+pypdf

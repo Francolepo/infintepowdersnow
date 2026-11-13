@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "piano2score"
+version = "0.1.0"
+description = "Turn falling-notes piano tutorial videos (YouTube or a file) into sheet music"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "opencv-python-headless",
+    "music21",
+    "yt-dlp",
+    "verovio",
+    "cairosvg",
+    "pypdf",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+piano2score = "piano2score.cli:main"
+
+[tool.setuptools]
+packages = ["piano2score"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
